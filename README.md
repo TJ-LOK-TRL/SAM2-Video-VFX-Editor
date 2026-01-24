@@ -1,4 +1,4 @@
-# 🧠 ProjetoSam2 — Advanced AI Video Editor with SAM2
+# 🧠 Advanced AI Video Editor with SAM2
 
 An advanced video editing suite powered by **Segment Anything 2 (SAM2)** for object segmentation and tracking. This tool allows for professional-grade VFX, object removal, and background manipulation using a **Vue.js** frontend and a **Flask (Python)** backend.
 
@@ -70,14 +70,14 @@ sudo apt-get install -y ffmpeg
 ## Repository Cloning
 
 ```bash
-git clone https://github.com/TJ-LOK-TRL/ProjetoSam2.git
-cd ProjetoSam2
+git clone https://github.com/TJ-LOK-TRL/SAM2-Video-VFX-Editor.git
+cd SAM2-Video-VFX-Editor
 ```
 
 ## Required Directory Structure
 
 ```plaintext
-ProjetoSam2/
+SAM2-Video-VFX-Editor/
 ├── backend/
 │   ├── segment-anything-2/  # ← Must be added manually
 │   ├── videos/
