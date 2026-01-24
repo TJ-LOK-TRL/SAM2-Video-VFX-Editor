@@ -1,10 +1,46 @@
-# 🧠 ProjetoSam2 — Editor de Vídeo com SAM2
+# 🧠 ProjetoSam2 — Advanced AI Video Editor with SAM2
 
-Este projeto é um editor de vídeo que utiliza o modelo **Segment Anything 2 (SAM2)** para segmentação de objetos em vídeos. A aplicação é dividida em **frontend (Vue.js)** e **backend (Flask + Python)**.
+An advanced video editing suite powered by **Segment Anything 2 (SAM2)** for object segmentation and tracking. This tool allows for professional-grade VFX, object removal, and background manipulation using a **Vue.js** frontend and a **Flask (Python)** backend.
 
-## 🧱 Pré-requisitos do sistema
+---
 
-Antes de iniciar, certifique-se de ter os seguintes pacotes instalados no sistema:
+## 🌟 Key Features
+
+### 🎬 Core Video Editing
+* **Multi-Element Timeline**: Support for multiple video and text layers.
+* **Transform Tools**: Drag, resize, and grab elements directly on the canvas. Includes rotation, "Fit to Canvas" mode, and Horizontal Flip (Y-axis mirroring).
+* **Video Adjustments**: Control playback speed, start/end points, and volume (frontend).
+* **Visual Enhancements**: Add rounded corners (border-radius) and Fade-in/Fade-out animations.
+* **Layer Management**: Centralized list to filter and manage all video and text elements.
+
+### 🎭 AI Object Segmentation & Masking
+* **Interactive Selection**: Select objects by adding or removing points. The editor tracks these objects throughout the entire video.
+* **VFX Masks**: Generate masks to apply localized effects that follow the object's movement.
+* **Chroma Key**: Remove backgrounds via manual color selection or auto-picking from a specific pixel coordinate.
+* **Transparency**: Full support for alpha channels and transparent backgrounds.
+
+### 🧪 Object & Background Effects
+Apply 8 unique effects to tracked objects or 6 effects to the background (everything except the masked objects).
+
+| Effect | Description |
+| :--- | :--- |
+| **Original** | Resets the selection to its original state. |
+| **Erase** | Removes the object. Uses background replacement or fills with black. |
+| **Blend** | Applies textures from another video/image onto the object (perfect for clothing/surface textures). |
+| **Color** | Advanced grading: Brightness, Contrast, Exposure, Hue, Saturation, Sharpen, Noise, Blur, and Vignette. Features a **Factor** slider to mix with original textures/shadows. |
+| **Overlay** | Attaches a video/image that follows the object (can be placed in front or behind). |
+| **Cut** | Makes the object area transparent, revealing the canvas or layers underneath. |
+| **Split** | Extracts the object into a separate video with a transparent background. |
+| **Label** | Attaches dynamic text labels that follow the object's movement. |
+
+### ✍️ Text & UI
+* **Typography**: Customizable fonts, fontSize, color, and X-axis alignment.
+* **Styles**: Support for Bold and Italic (dependent on font compatibility).
+* **Auth**: Integrated Login system for user management.
+
+## 🧱 System Prerequisites
+
+Before starting, make sure you have the following packages installed on your system:
 
 ```bash
 sudo apt-get update
@@ -15,35 +51,35 @@ sudo apt-get install -y ffmpeg
 
 ---
 
-## 🚀 Manual de Instalação
+## 🚀 Installation Manual
 
-### ✅ Pré-requisitos
-- Python 3.10 ou superior
-- Node.js (v16+) e npm
-- Git instalado
-- Ambiente recomendado: Linux/macOS ou WSL2 (para evitar problemas com dependências no Windows)
+### ✅ Prerequisites
+- Python 3.10 or higher
+- Node.js (v16+) and npm
+- Git installed
+- Recommended environment: Linux/macOS or WSL2 (to avoid dependency issues on Windows)
 
 ---
 
-### 📥 Configuração do Projeto
+### 📥 Project Setup
 
-1. **Clonar o repositório**:
+1. **Clone the repository**:
 
-# Projeto SAM2
+# SAM2 Project
 
-## Clonagem do Repositório
+## Repository Cloning
 
 ```bash
 git clone https://github.com/TJ-LOK-TRL/ProjetoSam2.git
 cd ProjetoSam2
 ```
 
-## Estrutura de Diretórios Necessária
+## Required Directory Structure
 
 ```plaintext
 ProjetoSam2/
 ├── backend/
-│   ├── segment-anything-2/  # ← Deve ser adicionado manualmente
+│   ├── segment-anything-2/  # ← Must be added manually
 │   ├── videos/
 │   │   └── frames/
 ├── frontend/
@@ -51,8 +87,8 @@ ProjetoSam2/
 
 ## Preparar o SAM2
 
-1. **Baixe manualmente o Segment Anything 2**
-2. **Extraia para:** `backend/segment-anything-2`
+1. **Manually download Segment Anything 2**
+2. **Extract to:** `backend/segment-anything-2`
 
 ---
 
@@ -68,7 +104,7 @@ npm run dev
 
 ## 🖥️ Backend (Flask + Python)
 
-### Criar pastas e ambiente virtual:
+### Create folders and virtual environment:
 
 ```bash
 cd backend
@@ -79,13 +115,13 @@ source venv/bin/activate  # Linux/macOS
 venv\Scripts\activate     # Windows
 ```
 
-### Instalar dependências:
+### Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Executar servidor Flask:
+### Run Flask server:
 
 ```bash
 python app.py
@@ -93,7 +129,7 @@ python app.py
 
 ---
 
-## 📝 Arquivo `requirements.txt`
+## 📝 requirements.txt File
 
 ```
 flask==3.1.0
@@ -115,13 +151,13 @@ triton==3.2.0
 
 ---
 
-## ⚠️ Notas Importantes
+## ⚠️ Important Notes
 
-### Para GPU (CUDA):
+### For GPU (CUDA):
 
 ```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
-- Verifique se todas as dependências foram instaladas corretamente.
-- Mantenha a estrutura exata de pastas especificada.
+- Make sure all dependencies have been installed correctly.
+- Keep the exact folder structure as specified.
