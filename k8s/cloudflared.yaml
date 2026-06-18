@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: sam2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: cloudflared
+          image: ghcr.io/tj-lok-trl/sam2-video-vfx-editor/cloudflared:latest
+          env:
+            - name: TUNNEL_TARGET
+              value: "http://traefik.kube-system.svc.cluster.local:80"
+            - name: WORKER_UPDATE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: worker-update-url
+                  optional: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      restartPolicy: Always

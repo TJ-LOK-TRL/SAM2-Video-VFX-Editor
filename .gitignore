@@ -30,3 +30,8 @@ backend/videos\\test_frames\\
 backend/images/
 
 frontend/node_modules/
+
+# k8s/db
+k8s/secrets.env
+backend/instance/
+*.db

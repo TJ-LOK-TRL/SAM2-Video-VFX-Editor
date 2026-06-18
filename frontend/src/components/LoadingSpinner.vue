@@ -2,21 +2,26 @@
     <div v-if="isLoading" class="loading-overlay">
         <div class="spinner"></div>
         <p class="loading-text">Loading...</p>
+        <p v-if="statusText" class="loading-status-text">{{ statusText }}</p>
     </div>
 </template>
 
 <script setup>
-    import { ref, onMounted, watch } from 'vue';
+    import { ref, watch } from 'vue';
 
     const props = defineProps({
-        isLoading: Boolean
+        isLoading: Boolean,
+        statusText: {
+            type: String,
+            default: ''
+        }
     });
 
     const isLoading = ref(props.isLoading)
 
     watch(() => props.isLoading, () => {
         isLoading.value = props.isLoading
-    })    
+    })
 </script>
 
 <style scoped>
@@ -48,6 +53,13 @@
         color: white;
         font-size: 18px;
         font-weight: bold;
+        text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    .loading-status-text {
+        margin-top: 6px;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 14px;
         text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
     }
 

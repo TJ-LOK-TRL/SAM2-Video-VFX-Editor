@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: sam2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: worker
+          image: ghcr.io/tj-lok-trl/sam2-video-vfx-editor/backend:latest
+          command: ["celery", "-A", "tasks", "worker", "--loglevel=info"]
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: redis-url
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: redis-url
+            - name: MINIO_URL
+              value: http://minio:9000
+            - name: MINIO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-user
+            - name: MINIO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-password
+            - name: STORAGE_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: storage-provider
+            - name: R2_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-endpoint
+            - name: R2_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-access-key
+            - name: R2_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-secret-key
+            - name: R2_BUCKET_VIDEOS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-videos
+            - name: R2_BUCKET_OUTPUTS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-outputs

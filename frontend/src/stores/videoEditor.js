@@ -21,6 +21,7 @@ export const useVideoEditor = defineStore('videoEditor', () => {
     const effectHandler = ref(new EffectHandler(register.value, maskHandler.value))
 
     const isLoadingInternal = ref(false); // Estado interno
+    const loadingStatusText = ref('') // Texto de status mostrado durante o loading (ex.: progresso de uma task assíncrona)
 
     // Computed com getter e setter para rastrear mudanças
     const isLoading = computed({
@@ -212,6 +213,13 @@ export const useVideoEditor = defineStore('videoEditor', () => {
         }
     }
 
+    const maskJobStageLabels = {
+        pending: 'A preparar pedido...',
+        downloading: 'A carregar vídeo...',
+        segmenting: 'A gerar máscaras com SAM2...',
+        finishing: 'A finalizar...',
+    }
+
     // Generates masks for the video
     async function generateMasksForVideo(video, inputOptions = {}, usePoints = null) {
         const ann_frame_idx = Math.floor(video.currentTime * video.fps);
@@ -220,6 +228,9 @@ export const useVideoEditor = defineStore('videoEditor', () => {
         const options = {
             scale_factor: inputOptions.scale_factor || maskScaleFactor.value,
             ...inputOptions,
+            onStatusUpdate: (statusData) => {
+                loadingStatusText.value = maskJobStageLabels[statusData.stage] || maskJobStageLabels[statusData.status] || ''
+            },
         };
 
         // Agrupar pontos por objId
@@ -279,7 +290,11 @@ export const useVideoEditor = defineStore('videoEditor', () => {
         }
         catch (error) {
             console.error('Erro ao gerar máscaras para o vídeo:', error);
+            alert(`Ocorreu um erro ao gerar as máscaras do vídeo: ${error.message || error}`);
             return null;
+        }
+        finally {
+            loadingStatusText.value = ''
         }
     }
 
@@ -701,7 +716,7 @@ export const useVideoEditor = defineStore('videoEditor', () => {
     }
 
     return {
-        elementManager, isLoading, videoPlayerWidth, videoPlayerHeight, videoPlayerContainer, fps,
+        elementManager, isLoading, loadingStatusText, videoPlayerWidth, videoPlayerHeight, videoPlayerContainer, fps,
         selectedElement, maskHandler, selectedTool, selectedToolIcon, mapperBoxVideo, register, effectHandler, zoomLevel,
         preventUnselectElementOnOutside, videoPlayerSpaceContainer, maskScaleFactor, isPromptElementOpen, onElementPromptedSelectCallback,
         onElementPromptSelectionDoneCallback, animationHandler, lines,

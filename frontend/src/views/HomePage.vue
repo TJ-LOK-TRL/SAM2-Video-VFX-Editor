@@ -1,6 +1,6 @@
 <template>
     <main class="main-container" ref="mainContainerRef">
-        <LoadingSpinner :isLoading="videoEditor.isLoading" />
+        <LoadingSpinner :isLoading="videoEditor.isLoading" :statusText="videoEditor.loadingStatusText" />
         <PromptElementSelector />
         <ToolBar class="toolbar" />
         <div ref="mainContainerLeftRef" class="main-container-left">

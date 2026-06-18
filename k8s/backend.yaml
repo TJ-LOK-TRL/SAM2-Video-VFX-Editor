@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: sam2
+spec:
+  ports:
+    - port: 8000
+      targetPort: 8000
+  selector:
+    app: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: sam2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: backend-sa
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: backend
+          image: ghcr.io/tj-lok-trl/sam2-video-vfx-editor/backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MINIO_URL
+              value: http://minio:9000
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: redis-url
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: redis-url
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: database-url
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: jwt-secret
+            - name: MINIO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-user
+            - name: MINIO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-password
+            - name: STORAGE_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: storage-provider
+            - name: R2_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-endpoint
+            - name: R2_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-access-key
+            - name: R2_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-secret-key
+            - name: R2_BUCKET_VIDEOS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-videos
+            - name: R2_BUCKET_OUTPUTS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-outputs
+            - name: R2_BUCKET_BACKUPS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-backups
+            - name: WORKER_UPDATE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: worker-update-url
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: k8s-namespace
+            - name: SAM2_JOB_IMAGE
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: sam2-job-image

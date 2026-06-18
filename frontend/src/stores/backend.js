@@ -2,17 +2,16 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL
+
 export const useBackendStore = defineStore('backend', () => {
     const images = ref([])
     const error = ref(null)
-    //const ip = ref('192.168.1.231')
-    const ip = ref('127.0.0.1')
-    const port = ref('38080')
 
     async function test() {
         try {
-            console.log(`http://${ip.value}:${port.value}/test`)
-            const response = await axios.get(`http://${ip.value}:${port.value}/test`)
+            console.log(`${API_BASE_URL}/test`)
+            const response = await axios.get(`${API_BASE_URL}/test`)
             console.log(response.data)
         } catch (err) {
             error.value = err.message
@@ -23,7 +22,7 @@ export const useBackendStore = defineStore('backend', () => {
         const formData = new FormData()
         formData.append('image', file)
 
-        const response = await axios.post(`http://${ip.value}:${port.value}/convert/image-to-video`, formData, {
+        const response = await axios.post(`${API_BASE_URL}/convert/image-to-video`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
             },
@@ -37,7 +36,7 @@ export const useBackendStore = defineStore('backend', () => {
         const formData = new FormData()
         formData.append('video', file)
 
-        const response = await axios.post(`http://${ip.value}:${port.value}/video/basic_data`, formData, {
+        const response = await axios.post(`${API_BASE_URL}/video/basic_data`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
             }
@@ -50,13 +49,39 @@ export const useBackendStore = defineStore('backend', () => {
         const formData = new FormData()
         formData.append('frame', frame)
 
-        const response = await axios.post(`http://${ip.value}:${port.value}/video/frame/mask`, formData, {
+        const response = await axios.post(`${API_BASE_URL}/video/frame/mask`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
             }
         })
 
         return response.data
+    }
+
+    async function pollVideoMaskJob(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatusUpdate = null } = {}) {
+        const startedAt = Date.now()
+
+        while (true) {
+            const { data } = await axios.get(`${API_BASE_URL}/video/mask/status/${jobId}`)
+
+            if (onStatusUpdate) {
+                onStatusUpdate(data)
+            }
+
+            if (data.status === 'done') {
+                return data
+            }
+
+            if (data.status === 'failed') {
+                throw new Error(data.error || 'Falha ao gerar máscaras do vídeo')
+            }
+
+            if (Date.now() - startedAt > timeoutMs) {
+                throw new Error('Tempo limite excedido a aguardar pelas máscaras')
+            }
+
+            await new Promise(resolve => setTimeout(resolve, intervalMs))
+        }
     }
 
     async function getMasksForVideo(videoFile, videoObjectsInfo, options = {}) {
@@ -87,18 +112,27 @@ export const useBackendStore = defineStore('backend', () => {
                 stage_name: (options.stage_name || null),
             });
             // Send the request to the backend
-            const response = await axios.post(`http://${ip.value}:${port.value}/video/mask`, formData, {
+            const response = await axios.post(`${API_BASE_URL}/video/mask`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 },
             });
-            return response.data;
+
+            // Resultado já estava cacheado (mesmo stage_name) -> vem pronto de imediato
+            if (response.data.status === 'done') {
+                return response.data;
+            }
+
+            // Caso contrário, o backend devolveu um job_id -> fazer polling até terminar
+            return await pollVideoMaskJob(response.data.job_id, {
+                intervalMs: options.pollIntervalMs,
+                onStatusUpdate: options.onStatusUpdate,
+            });
         } catch (error) {
             console.error("Erro na requisição:", error);
             throw error;
         }
     }
-    // FALTA botao guardar 
     
     async function download(video_files, metadata) {
         try {
@@ -109,7 +143,7 @@ export const useBackendStore = defineStore('backend', () => {
             });
             // 2. Adiciona todos os metadados em um único JSON
             formData.append('metadata', JSON.stringify(metadata));
-            const response = await axios.post(`http://${ip.value}:${port.value}/download`, formData, {
+            const response = await axios.post(`${API_BASE_URL}/download`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 },
@@ -121,7 +155,6 @@ export const useBackendStore = defineStore('backend', () => {
             throw error;
         }
     }
-
 
     return { test, images, error, getMediaBasicData, getMasksForFrame, 
         getMasksForVideo, download, convertImageToVideo }

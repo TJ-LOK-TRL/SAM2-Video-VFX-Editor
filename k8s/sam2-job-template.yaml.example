@@ -1,0 +1,72 @@
+# Rename to sam2-job-template.yaml.example
+# Template for dynamic SAM2 inference Jobs spawned by backend.
+# Backend should create a Job resource in namespace `sam2` using this structure,
+# replacing `JOB_ID`, `INPUT_VIDEO_URL`, and effect parameters.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sam2-job-{{ job_id }}
+  namespace: sam2
+  labels:
+    app: sam2-inference
+    job_id: "{{ job_id }}"
+spec:
+  ttlSecondsAfterFinished: 3600  # Clean up completed jobs after 1 hour
+  template:
+    metadata:
+      labels:
+        app: sam2-inference
+        job_id: "{{ job_id }}"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: sam2
+          image: ghcr.io/tj-lok-trl/sam2-video-vfx-editor/sam2-job:latest
+          command: ["python", "/app/sam2_job/run_job.py"]
+          env:
+            - name: JOB_ID
+              value: "{{ job_id }}"
+            - name: INPUT_VIDEO_URL
+              value: "{{ input_video_url }}"  # e.g., s3://minio-bucket/videos/input.mp4
+            - name: EFFECT_TYPE
+              value: "{{ effect_type }}"  # segmentation, removal, blend, etc.
+            - name: MASK_POINTS
+              value: "{{ mask_points }}"  # JSON list of points
+            - name: OUTPUT_BUCKET
+              value: sam2-bucket
+            - name: MINIO_URL
+              value: http://minio:9000
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+            - name: DATABASE_URL
+              value: postgresql://sam2:{{ db_password }}@postgres:5432/sam2db
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-password
+          resources:
+            limits:
+              nvidia.com/gpu: 1  # Request 1 GPU
+              memory: "16Gi"
+              cpu: "4"
+            requests:
+              nvidia.com/gpu: 1
+              memory: "8Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: shared-data
+              mountPath: /data
+      restartPolicy: Never
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: train-data-pvc
+  backoffLimit: 1

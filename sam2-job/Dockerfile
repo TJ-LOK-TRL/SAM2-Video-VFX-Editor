@@ -1,22 +1,22 @@
-FROM python:3.10-slim
+# SAM2 job image: PyTorch + CUDA runtime for GPU inference
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
+# Install system deps needed by SAM2 and video processing
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    libpq-dev \
     ffmpeg \
+    git \
+    curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy and install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Copy backend requirements (rely on same requirements file) and install
+COPY backend/requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 
 # Clone the SAM2 repository and install demo dependencies
 RUN git clone https://github.com/facebookresearch/segment-anything-2.git /app/backend/segment-anything-2 \
@@ -28,16 +28,9 @@ RUN mkdir -p /app/backend/segment-anything-2/checkpoints \
     && curl -L -o /app/backend/segment-anything-2/checkpoints/sam2_hiera_tiny.pt \
        https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_tiny.pt
 
-# Copy backend application code
+# Copy application code
 COPY backend/ /app/backend/
+COPY sam2-job/ /app/sam2_job/
 
-WORKDIR /app/backend
-
-# Health check for container orchestration
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/test || exit 1
-
-EXPOSE 8000
-
-# Default: start Flask REST API. Override for Celery worker: celery -A tasks worker --loglevel=info
-CMD ["python", "app.py"]
+# Expose nothing (runs as Job). Entrypoint runs the job script which reads env vars.
+ENTRYPOINT ["python", "/app/sam2_job/run_job.py"]

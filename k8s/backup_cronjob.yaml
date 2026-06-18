@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: minio-backup
+  namespace: sam2
+spec:
+  schedule: "0 * * * *" # hourly
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: minio/mc
+              command: ["/bin/sh","-c"]
+              args:
+                - |
+                  mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && \
+                  mc alias set remote "$R2_ENDPOINT" "$R2_ACCESS_KEY" "$R2_SECRET_KEY" && \
+                  mc mirror local/sam2-bucket remote/"$R2_BUCKET_BACKUPS" || true
+              env:
+                - name: MINIO_ROOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: minio-user
+                - name: MINIO_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: minio-password
+                - name: R2_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: r2-endpoint
+                - name: R2_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: r2-access-key
+                - name: R2_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: r2-secret-key
+                - name: R2_BUCKET_BACKUPS
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: r2-bucket-backups
+          restartPolicy: OnFailure

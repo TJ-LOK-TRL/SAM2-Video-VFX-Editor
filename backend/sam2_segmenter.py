@@ -29,23 +29,24 @@ class VideoObjectData:
     ann_obj_id: int = 1,
 
 class SAM2Segmenter:
-    HOME = os.path.join(os.getcwd(), 'segment-anything-2')
+    HOME = os.path.join(os.path.dirname(__file__), 'segment-anything-2')
     MODEL_SIZE_BASE = 'base_plus'
     MODEL_SIZE_LARGE = 'large'
     MODEL_SIZE_SMALL = 'small'
     MODEL_SIZE_TINY = 'tiny'
     
     def __init__(self, model_size: str = MODEL_SIZE_TINY) -> None:
-        # Enable autocasting for CUDA with bfloat16 precision to optimize performance
-        torch.autocast(device_type='cuda', dtype=torch.bfloat16).__enter__()
-
-        # If the GPU supports TensorFloat-32 (e.g., Ampere or newer), enable it for better performance
-        if torch.cuda.get_device_properties(0).major >= 8:
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
-            
         # Set the device to GPU if available, otherwise fallback to CPU
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        if self.device.type == 'cuda':
+            # Enable autocasting for CUDA with bfloat16 precision to optimize performance
+            torch.autocast(device_type='cuda', dtype=torch.bfloat16).__enter__()
+
+            # If the GPU supports TensorFloat-32 (e.g., Ampere or newer), enable it for better performance
+            if torch.cuda.get_device_properties(0).major >= 8:
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
         
         # Define the path to the SAM2 configuration file
         self.config = os.path.join(SAM2Segmenter.HOME, 'sam2', 'configs', 'sam2', 'sam2_hiera_t.yaml')
@@ -58,7 +59,8 @@ class SAM2Segmenter:
                                 device=self.device, apply_postprocessing=False)
         
         # Load the video prediction model (used for handling temporal context in video)
-        self.video_model = build_sam2_video_predictor('/' + os.path.abspath(self.config), self.model_path)
+        self.video_model = build_sam2_video_predictor('/' + os.path.abspath(self.config), self.model_path,
+                                                       device=self.device)
         
         # Initialize the automatic mask generator using the base SAM2 model
         self.mask_generator = SAM2AutomaticMaskGenerator(self.model)

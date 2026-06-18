@@ -7,13 +7,13 @@ import cv2
 import base64
 import tempfile
 import subprocess
+import uuid
 
 
 from flask import Flask, jsonify, send_from_directory, request, send_file
 from flask_cors import CORS
 import json
 import traceback
-import shutil
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
@@ -27,10 +27,13 @@ from video_effects_processor import VideoEffectsProcessor
 from video_animation_processor import VideoAnimationProcessor
 from video_compositor import *
 from sam2.build_sam import build_sam2
-from sam2_segmenter import SAM2Segmenter, VideoObjectData
+from sam2_segmenter import SAM2Segmenter
 from data_saver import DataSaver
 from utils import *
 from text_generator import create_text_frame
+import storage
+from celery.result import AsyncResult
+from tasks import celery_app, generate_video_masks
 
 app = Flask(__name__)
 
@@ -213,146 +216,88 @@ def get_masks_of_video():
     # Verificar se o vídeo foi enviado
     if 'video' not in request.files:
         return jsonify({'error': 'No video file provided'}), 400
-    
-    # Obter o arquivo de vídeo
+
     file = request.files['video']
-    
-    # Arquivo temporário com sufixo mp4 para o OpenCV abrir
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
-        file.save(tmp.name)
-        temp_path = tmp.name
-        
+
     try:
-        # Extrair parâmetros do JSON
+        # Extrair parâmetros do form
         stage_name = request.form.get('stage_name')
         start_frame = int(request.form.get('start_frame', 0))
         end_frame = int(request.form.get('end_frame', -1))  # -1 significa até o final
         scale_factor = float(request.form.get('scale_factor', 0.5))
-        
-        #points = np.array(json.loads(request.form.get('points')), dtype=np.float32)
-        #labels = np.array(json.loads(request.form.get('labels')), dtype=np.int32)
-        #ann_frame_idx = int(request.form.get('ann_frame_idx', 0))
-        #ann_obj_id = int(request.form.get('ann_obj_id', 1))    
-        
-        # Validar os pontos e labels
-        #if len(points) == 0 or len(labels) == 0:
-        #    return jsonify({'error': 'Points and labels cannot be empty'}), 400
-        #
-        #if len(points) != len(labels):
-        #    return jsonify({'error': 'Points and labels must have the same length'}), 400
-        
-        video_objects_json = json.loads(request.form.get("video_objects"))
-        video_objects: List[VideoObjectData] = []
-        for idx, obj in enumerate(video_objects_json):
-            points_raw = obj.get("points")
-            labels_raw = obj.get("labels")
 
-            # Validação
+        video_objects_json = request.form.get('video_objects')
+        video_objects_raw = json.loads(video_objects_json)
+
+        # Validar os pontos e labels antes de despachar a task
+        for idx, obj in enumerate(video_objects_raw):
+            points_raw = obj.get('points')
+            labels_raw = obj.get('labels')
+
             if not points_raw or not labels_raw:
                 return jsonify({'error': f'Points and labels cannot be empty (object index {idx})'}), 400
 
             if len(points_raw) != len(labels_raw):
                 return jsonify({'error': f'Points and labels must have the same length (object index {idx})'}), 400
 
-            # Aplicar fator de escala aos pontos
-            points_scaled = np.array(points_raw, dtype=np.float32) * scale_factor
-            labels = np.array(labels_raw, dtype=np.int32)
-
-            vod = VideoObjectData(
-                points=points_scaled,
-                labels=labels,
-                ann_frame_idx=int(obj.get("ann_frame_idx", 0)),
-                ann_obj_id=int(obj.get("ann_obj_id", 1)),
-            )
-            video_objects.append(vod)
-
-            # Print de debug por objeto
-            print(f"\n[DEBUG] VideoObjectData #{idx}:")
-            print(f"  ann_frame_idx: {vod.ann_frame_idx}")
-            print(f"  ann_obj_id: {vod.ann_obj_id}")
-            print(f"  points.shape: {vod.points.shape if vod.points is not None else 'None'}")
-            print(f"  points (scaled):\n{vod.points}")
-            print(f"  labels:\n{vod.labels}")
-        
-                 
-        # Obter as dimensões originais do vídeo para calcular o scaling
-        processor = VideoProcessor(temp_path)
-        original_width, original_height = processor.get_size()
-        processor.release()
-                    
         print(f'Stage name: {stage_name}')
         print(f"Fator de escala: {scale_factor}")
-        print(f"Dimensões originais: {original_width}x{original_height}")
-        print(f"Dimensões escaladas: {int(original_width*scale_factor)}x{int(original_height*scale_factor)}")
         print(f"Frame inicial: {start_frame}")
         print(f"Frame final: {end_frame}")
-        print(f"Arquivo temporário: {temp_path}")
-                
-        # Criar diretório temporário para os frames processados
-        output_dir = os.path.join('videos', 'frames', stage_name or 'reg_stage')
-        if stage_name is None:
-            if os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
-        
-        # Processar o vídeo com SAM2 #video2_test
-        serialized_result = (DataSaver.get_stage(stage_name) or {}) if stage_name else {}
-        if not serialized_result:
-            segmenter = SAM2Segmenter()
-            print('Gerando máscaras para o vídeo...')
-            result = segmenter.generate_masks_for_video(
-                video_path=temp_path,
-                video_objects_data=video_objects,
-                output_dir=output_dir,
-                scale_factor=scale_factor,
-                start_frame=start_frame,
-                end_frame=end_frame if end_frame != -1 else None,
-                debug_points=False,
-            )
-            
-            print('Size:', len(result.items()))
-            # Converter o resultado para um formato que pode ser enviado por JSON
-            for frame_idx, frame_data in result.items():
-                frame_idx = frame_idx + start_frame
-                serialized_frame = {}
-                for obj_id, mask in frame_data.items():
-                    try:
-                        # Verificação inicial
-                        if mask is None or mask.size == 0:
-                            print(f"Frame {frame_idx}: Máscara vazia")
-                            continue
-                            
-                        # Conversão e codificação
-                        mask_base64 = encode_mask(mask)
-                        
-                        serialized_frame[obj_id] = {
-                            "shape": mask.shape,
-                            "data": f"data:image/png;base64,{mask_base64}"
-                        }
-                                
-                    except Exception as e:
-                        print(f"ERRO no frame {frame_idx}: {str(e)}")
-                        continue
-                
-                serialized_result[frame_idx] = serialized_frame
-            
-            stage_name = stage_name or unique_filename('stages', prefix='track_masks_stage_', ext='')
-            print('Máscaras geradas salvadas no stage:', stage_name)
-            DataSaver.add_stage(stage_name, serialized_result)    
-        
-        return jsonify({
-            'result': serialized_result,  # Enviar o resultado inteiro
-            'track_id': stage_name
-        })
-        
+
+        # Se já existirem máscaras geradas para este stage, devolver de imediato
+        cached_result = DataSaver.get_stage(stage_name) if stage_name else None
+        if cached_result:
+            print('Máscaras já existentes para o stage:', stage_name)
+            return jsonify({'status': 'done', 'result': cached_result, 'track_id': stage_name})
+
+        # Guardar o vídeo no MinIO/R2 para o worker conseguir descarregá-lo
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+            file.save(tmp.name)
+            temp_path = tmp.name
+
+        video_key = f"uploads/{uuid.uuid4().hex}.mp4"
+        try:
+            storage.upload_file(temp_path, storage.VIDEOS_BUCKET, video_key)
+        finally:
+            os.remove(temp_path)
+
+        # Despachar a task Celery e devolver o job_id imediatamente
+        task = generate_video_masks.delay(
+            video_key=video_key,
+            video_objects_json=video_objects_json,
+            scale_factor=scale_factor,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            stage_name=stage_name,
+        )
+
+        return jsonify({'status': 'pending', 'job_id': task.id}), 202
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-    
-    finally:
-        try:
-            os.remove(temp_path)
-        except PermissionError:
-            print(f"Não foi possível remover o arquivo: {temp_path}")
+
+
+@app.route('/video/mask/status/<job_id>', methods=['GET'])
+def get_video_mask_status(job_id):
+    task = AsyncResult(job_id, app=celery_app)
+
+    if task.state == 'PROGRESS':
+        stage = task.info.get('stage') if isinstance(task.info, dict) else None
+        return jsonify({'status': 'pending', 'stage': stage})
+
+    if task.state in ('PENDING', 'STARTED', 'RETRY'):
+        return jsonify({'status': 'pending'})
+
+    if task.state == 'FAILURE':
+        return jsonify({'status': 'failed', 'error': str(task.result)})
+
+    if task.state == 'SUCCESS':
+        payload = task.result
+        return jsonify({'status': 'done', 'result': payload['result'], 'track_id': payload['track_id']})
+
+    return jsonify({'status': task.state.lower()})
 
 @app.route('/projects', methods=['POST'])
 def save_project():
@@ -659,4 +604,4 @@ def download():
 # app.register_blueprint(auth_bp, url_prefix='/auth')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=38080)
+    app.run(host='0.0.0.0', port=8000)

@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init
+  namespace: sam2
+spec:
+  template:
+    spec:
+      containers:
+        - name: mc
+          image: minio/mc
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && \
+              mc mb --ignore-existing local/sam2-bucket && \
+              mc mb --ignore-existing "local/$R2_BUCKET_VIDEOS" && \
+              mc mb --ignore-existing "local/$R2_BUCKET_OUTPUTS" && \
+              mc mb --ignore-existing local/db-backups
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: minio-password
+            - name: R2_BUCKET_VIDEOS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-videos
+            - name: R2_BUCKET_OUTPUTS
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: r2-bucket-outputs
+      restartPolicy: OnFailure
+  backoffLimit: 3
