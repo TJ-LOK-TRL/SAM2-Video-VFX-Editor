@@ -75,8 +75,8 @@ async function download() {
     }
 }
 
-function saveProject() {
-    const success = authStore.saveProject(projectName.value)
+async function saveProject() {
+    const success = await authStore.saveProject(projectName.value)
     if (success) {
         alert('Projeto Guardado! :) ')
     } else {

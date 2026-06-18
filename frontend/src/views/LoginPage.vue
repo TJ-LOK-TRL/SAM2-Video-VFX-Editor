@@ -19,8 +19,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore.js'
-const email = ref('user1@mail.pt')
-const password = ref('123')
+const email = ref('')
+const password = ref('')
 const loading = ref(false)
 const error = ref('')
 const authStore = useAuthStore()
@@ -28,7 +28,7 @@ const router = useRouter()
 async function submitLogin() {
   loading.value = true
   error.value = ''
-  if (authStore.login(email.value, password.value)) {
+  if (await authStore.login(email.value, password.value)) {
     router.push('/')
   } else {
     error.value = 'Credenciais inválidas'

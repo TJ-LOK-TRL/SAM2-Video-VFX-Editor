@@ -14,12 +14,14 @@ const router = createRouter({
   history: createWebHistory(),
   routes,
 })
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
 
-  if(!authStore.currentUser && localStorage.getItem('currentUser')) {
-    authStore.currentUser = JSON.parse(localStorage.getItem('currentUser'))
+  if (to.meta.requiresAuth && authStore.isLoggedIn) {
+    // Garante que o token guardado ainda é válido no backend antes de deixar entrar
+    await authStore.restoreSession()
   }
+
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
     next('/login')
   } else {

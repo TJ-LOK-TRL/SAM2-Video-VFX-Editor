@@ -45,6 +45,12 @@
 
         const containerEl = spaceContainerRef.value
         const parentEl = spaceContainerParentRef.value
+
+        if (!containerEl || !parentEl) {
+            console.warn('VideoPlayer: refs do container ainda não estão prontos, a ignorar recálculo de tamanho')
+            return
+        }
+
         const containerWidth = parentEl.clientWidth
         const containerHeight = parentEl.clientHeight
 
@@ -142,6 +148,11 @@
     }
 
     function onVideoLoaded(video) {
+        if (!spaceContainerParentRef.value) {
+            console.warn('VideoPlayer: instância já desmontada, a ignorar evento de vídeo carregado')
+            return
+        }
+
         previousContainerRect = null
         recalculateSpaceContainerBoxSize()
 
@@ -165,21 +176,27 @@
         videoEditorStore.zoomLevel = Math.min(3, Math.max(0.2, videoEditorStore.zoomLevel + delta * zoomSpeed))
     }
 
+    const handleFirstVideoMetadataLoaded = (video) => {
+        onVideoLoaded(video)
+    }
+
+    const handleVideoMetadataLoaded = (video) => {
+        if (videoEditorStore.getVideos().length > 1)
+            recalculateBoxsSize()
+    }
+
     onMounted(async () => {
         await nextTick()
         videoEditorStore.setVideoPlayerContainer(videoPlayerContainer.value)
         videoEditorStore.setVideoPlayerSpaceContainer(spaceContainerRef.value)
-        videoEditorStore.onFirstVideoMetadataLoaded((video) => {
-            onVideoLoaded(video)
-        })
-        videoEditorStore.onVideoMetadataLoaded((video) => {
-            if (videoEditorStore.getVideos().length > 1)
-                recalculateBoxsSize()
-        })
+        videoEditorStore.onFirstVideoMetadataLoaded(handleFirstVideoMetadataLoaded)
+        videoEditorStore.onVideoMetadataLoaded(handleVideoMetadataLoaded)
     })
 
     onBeforeUnmount(() => {
         parentResizeObserver?.disconnect()
+        videoEditorStore.removeOnFirstVideoMetadataLoaded(handleFirstVideoMetadataLoaded)
+        videoEditorStore.removeOnVideoMetadataLoaded(handleVideoMetadataLoaded)
     })
 </script>
 

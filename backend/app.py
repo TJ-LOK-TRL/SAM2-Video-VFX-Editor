@@ -8,13 +8,14 @@ import base64
 import tempfile
 import subprocess
 import uuid
+from datetime import timedelta
 
 
 from flask import Flask, jsonify, send_from_directory, request, send_file
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 import json
 import traceback
-from werkzeug.security import generate_password_hash, check_password_hash
 
 
 segment_anything_path = os.path.join(os.path.dirname(__file__), 'segment-anything-2')
@@ -34,11 +35,24 @@ from text_generator import create_text_frame
 import storage
 from celery.result import AsyncResult
 from tasks import celery_app, generate_video_masks
+from auth import db, auth_bp
 
 app = Flask(__name__)
 
 app.debug = True  # Ativa o modo debug
 CORS(app)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DATABASE_URL']
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = os.environ['JWT_SECRET_KEY']
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=12)  # sessão de edição pode durar bastante tempo
+
+db.init_app(app)
+JWTManager(app)
+app.register_blueprint(auth_bp, url_prefix='/auth')
+
+with app.app_context():
+    db.create_all()
 
 # Definição da pasta de imagens
 IMAGES_FOLDER = 'images'
@@ -92,6 +106,7 @@ def segmentar_image(image_name):
     
 # ONLY ROUTES BELOW ARE USED
 @app.route('/convert/image-to-video', methods=['POST'])
+@jwt_required()
 def convert_image_to_video():
     image_file = request.files.get('image')
     if not image_file:
@@ -133,6 +148,7 @@ def convert_image_to_video():
                 os.remove(path)
     
 @app.route('/video/basic_data', methods=['POST'])
+@jwt_required()
 def get_basic_video_data():
     file = request.files['video']
 
@@ -173,6 +189,7 @@ def get_basic_video_data():
             print(f"Não foi possível remover o arquivo: {temp_path}")
 
 @app.route('/video/frame/mask', methods=['POST'])
+@jwt_required()
 def get_masks_of_frame():
     file = request.files['frame']
 
@@ -212,6 +229,7 @@ def get_masks_of_frame():
             print(f"Não foi possível remover o arquivo: {temp_path}")
 
 @app.route('/video/mask', methods=['POST'])
+@jwt_required()
 def get_masks_of_video():
     # Verificar se o vídeo foi enviado
     if 'video' not in request.files:
@@ -280,6 +298,7 @@ def get_masks_of_video():
 
 
 @app.route('/video/mask/status/<job_id>', methods=['GET'])
+@jwt_required()
 def get_video_mask_status(job_id):
     task = AsyncResult(job_id, app=celery_app)
 
@@ -300,13 +319,14 @@ def get_video_mask_status(job_id):
     return jsonify({'status': task.state.lower()})
 
 @app.route('/projects', methods=['POST'])
+@jwt_required()
 def save_project():
     print("\nRota para salvar um projeto\n")
     try:
         project = request.get_json()
 
         name = project.get('name')
-        email = project.get('user_email')
+        email = get_jwt_identity()
         data = project.get('data')
         thumbnail = project.get('thumbnail', None)
 
@@ -340,17 +360,13 @@ def save_project():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download', methods=['POST'])
+@jwt_required()
 def download():
     print("\n=== INÍCIO DA REQUISIÇÃO DE DOWNLOAD ===")
-    
-    try:
-        user_id = request.form.get('user_id')
 
-        # Verificar se o user_id é válido
-        if not user_id:
-            print("\n[ERRO] user_id não fornecido")
-            #return jsonify({'error': 'user_id não fornecido'}), 401
-        
+    try:
+        user_id = get_jwt_identity()
+
         # Log de cabeçalhos da requisição
         print("\n[HEADERS]")
         for key, value in request.headers.items():
@@ -600,8 +616,6 @@ def download():
             print("Erro na limpeza:", str(e))
         
         print("\n=== FIM DA REQUISIÇÃO ===")
-
-# app.register_blueprint(auth_bp, url_prefix='/auth')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)

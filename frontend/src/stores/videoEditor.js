@@ -351,8 +351,16 @@ export const useVideoEditor = defineStore('videoEditor', () => {
         onFirstVideoMetadataLoadedCallbacks.value.push(callback)
     }
 
+    function removeOnFirstVideoMetadataLoaded(callback) {
+        onFirstVideoMetadataLoadedCallbacks.value = onFirstVideoMetadataLoadedCallbacks.value.filter(cb => cb !== callback)
+    }
+
     function onVideoMetadataLoaded(callback) {
         onVideoMetadataLoadedCallbacks.value.push(callback)
+    }
+
+    function removeOnVideoMetadataLoaded(callback) {
+        onVideoMetadataLoadedCallbacks.value = onVideoMetadataLoadedCallbacks.value.filter(cb => cb !== callback)
     }
 
     function onElementAdded(callback) {
@@ -721,7 +729,8 @@ export const useVideoEditor = defineStore('videoEditor', () => {
         preventUnselectElementOnOutside, videoPlayerSpaceContainer, maskScaleFactor, isPromptElementOpen, onElementPromptedSelectCallback,
         onElementPromptSelectionDoneCallback, animationHandler, lines,
         addVideo, addText, cloneVideo, getVideos, getTexts, getElements, generateMasksForFrame, selectEditorElement, setVideoPlayerContainer,
-        onFirstVideoMetadataLoaded, onEditorElementSelected, onVideoMetadataLoaded, reorderElements, generateMasksForVideo,
+        onFirstVideoMetadataLoaded, removeOnFirstVideoMetadataLoaded, onEditorElementSelected, onVideoMetadataLoaded,
+        removeOnVideoMetadataLoaded, reorderElements, generateMasksForVideo,
         removeOnEditorElementSelected, changeTool, changeToPreviousTool, removeElement, getBoxOfElement, download, getVideoMetadata,
         compileVideos, onElementAdded, onElementRemoved, registerBox, onAddMapBoxVideo, removeOnAddMapBoxVideo, getRectBoxOfElement,
         setVideoPlayerSize, onCompileVideoMetadata, getFlipStateOfVideo, exportProject, importProject, setVideoPlayerSpaceContainer,

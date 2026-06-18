@@ -29,10 +29,10 @@ const router = useRouter()
 async function submitRegister() {
   loading.value = true
   error.value = ''
-  if (authStore.register(email.value, password.value)) {
+  if (await authStore.register(email.value, password.value)) {
     router.push('/')    // após criar, vai para home (edição vídeo)
   } else {
-    error.value = 'Email já existe.'
+    error.value = 'Não foi possível criar a conta. Verifica se o email já existe.'
   }
   loading.value = false
 }
