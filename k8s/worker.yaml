@@ -19,6 +19,13 @@ spec:
         - name: worker
           image: ghcr.io/tj-lok-trl/sam2-video-vfx-editor/backend:latest
           command: ["celery", "-A", "tasks", "worker", "--loglevel=info"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
           env:
             - name: REDIS_URL
               valueFrom:
@@ -72,3 +79,13 @@ spec:
                 secretKeyRef:
                   name: sam2-secrets
                   key: r2-bucket-outputs
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: telegram-bot-token
+            - name: TELEGRAM_CHAT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sam2-secrets
+                  key: telegram-chat-id

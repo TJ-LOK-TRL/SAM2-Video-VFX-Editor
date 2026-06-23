@@ -1,5 +1,19 @@
 const imageCache = new Map();
 
+// crypto.randomUUID() só existe em secure contexts (HTTPS ou localhost); crypto.getRandomValues()
+// não tem essa restrição, por isso serve de fallback para acesso por IP direto em HTTP simples.
+export function generateUUID() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID()
+    }
+
+    const bytes = crypto.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 export function base64ToBlobURL(base64, mimeType) {
     const byteString = atob(base64.split(',')[1] || base64)
     const ab = new ArrayBuffer(byteString.length)

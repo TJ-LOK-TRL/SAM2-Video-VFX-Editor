@@ -1,3 +1,15 @@
+# Middleware do Traefik: remove o prefixo /api antes de reencaminhar para o backend,
+# já que as rotas Flask não têm esse prefixo (ex.: /video/mask, não /api/video/mask).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api-prefix
+  namespace: sam2
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -5,11 +17,24 @@ metadata:
   namespace: sam2
   annotations:
     kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.middlewares: sam2-strip-api-prefix@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
     - http:
         paths:
+          # /api vai direto para o backend (bypassa o frontend). Em clusters onde o
+          # Traefik não respeitar esta regra (ex.: CIVO, motivo desconhecido), o
+          # pedido cai na regra "/" abaixo e o nginx do frontend continua a fazer
+          # proxy de /api/ para o backend, como já fazia antes — por isso o nginx.conf
+          # NÃO foi alterado, serve de fallback.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
           - path: /
             pathType: Prefix
             backend:

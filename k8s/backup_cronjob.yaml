@@ -16,8 +16,9 @@ spec:
               args:
                 - |
                   mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && \
-                  mc alias set remote "$R2_ENDPOINT" "$R2_ACCESS_KEY" "$R2_SECRET_KEY" && \
-                  mc mirror local/sam2-bucket remote/"$R2_BUCKET_BACKUPS" || true
+                  mc alias set r2-backup "$R2_ENDPOINT" "$R2_ACCESS_KEY" "$R2_SECRET_KEY" && \
+                  mc mirror "local/$R2_BUCKET_VIDEOS" "r2-backup/${R2_BUCKET_VIDEOS}-backup" && \
+                  mc mirror "local/$R2_BUCKET_OUTPUTS" "r2-backup/${R2_BUCKET_OUTPUTS}-backup" || true
               env:
                 - name: MINIO_ROOT_USER
                   valueFrom:
@@ -44,9 +45,14 @@ spec:
                     secretKeyRef:
                       name: sam2-secrets
                       key: r2-secret-key
-                - name: R2_BUCKET_BACKUPS
+                - name: R2_BUCKET_VIDEOS
                   valueFrom:
                     secretKeyRef:
                       name: sam2-secrets
-                      key: r2-bucket-backups
+                      key: r2-bucket-videos
+                - name: R2_BUCKET_OUTPUTS
+                  valueFrom:
+                    secretKeyRef:
+                      name: sam2-secrets
+                      key: r2-bucket-outputs
           restartPolicy: OnFailure

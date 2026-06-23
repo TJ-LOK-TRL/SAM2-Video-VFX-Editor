@@ -1,6 +1,7 @@
 <template>
     <main class="main-container" ref="mainContainerRef">
-        <LoadingSpinner :isLoading="videoEditor.isLoading" :statusText="videoEditor.loadingStatusText" />
+        <LoadingSpinner :isLoading="videoEditor.isLoading" :statusText="videoEditor.loadingStatusText"
+            :onCancel="videoEditor.currentMaskJobId ? videoEditor.cancelMaskGeneration : null" />
         <PromptElementSelector />
         <ToolBar class="toolbar" />
         <div ref="mainContainerLeftRef" class="main-container-left">

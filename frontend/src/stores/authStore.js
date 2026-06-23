@@ -5,7 +5,7 @@ import router from '@/router'
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL
-const TOKEN_KEY = 'auth_token'
+export const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'currentUser'
 
 function setAuthHeader(token) {

@@ -33,6 +33,13 @@ spec:
           image: ghcr.io/tj-lok-trl/sam2-video-vfx-editor/backend:latest
           ports:
             - containerPort: 8000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
           env:
             - name: MINIO_URL
               value: http://minio:9000

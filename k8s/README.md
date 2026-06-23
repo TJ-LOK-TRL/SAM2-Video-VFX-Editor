@@ -49,6 +49,11 @@ Kubernetes manifests for SAM2 Video VFX Editor
    kubectl apply -f backup_cronjob.yaml -n sam2
    ```
 
+6. **Autoscaling** (requires `metrics-server` in the cluster):
+   ```bash
+   kubectl apply -f hpa.yaml -n sam2
+   ```
+
 **Build and Push Images**:
 
 Replace image placeholders in manifests with:

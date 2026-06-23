@@ -11,6 +11,8 @@ import tempfile
 from typing import Optional
 
 import numpy as np
+import redis
+import requests
 from celery import Celery, Task
 from kombu import Exchange, Queue
 
@@ -28,6 +30,33 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 
 celery_app = Celery("sam2_tasks", broker=CELERY_BROKER_URL, backend=REDIS_URL)
+
+_redis_client = redis.from_url(REDIS_URL)
+
+
+def publish_job_progress(job_id: str, payload: dict) -> None:
+    """Publishes progress to Redis pub/sub; backend/ws_listener.py forwards it to SocketIO clients."""
+    try:
+        _redis_client.publish(f"job:{job_id}:progress", json.dumps(payload))
+    except Exception as exc:
+        print(f"[{job_id}] Failed to publish progress: {exc}")
+
+
+def send_telegram(message: str) -> None:
+    """Best-effort Telegram notification; never raises so it can't fail a job."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message},
+            timeout=10,
+        )
+    except Exception as exc:
+        print(f"Failed to send Telegram notification: {exc}")
 
 # Celery config
 celery_app.conf.update(
@@ -105,6 +134,7 @@ def generate_video_masks(self, video_key: str, video_objects_json: str, scale_fa
 
     try:
         self.update_state(state='PROGRESS', meta={'stage': 'downloading'})
+        publish_job_progress(job_id, {'status': 'pending', 'stage': 'downloading'})
 
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
             tmp_path = tmp.name
@@ -114,6 +144,12 @@ def generate_video_masks(self, video_key: str, video_objects_json: str, scale_fa
         output_dir = tempfile.mkdtemp(prefix=f'sam2_frames_{job_id}_')
 
         self.update_state(state='PROGRESS', meta={'stage': 'segmenting'})
+        publish_job_progress(job_id, {'status': 'pending', 'stage': 'segmenting'})
+
+        def on_frame_progress(frame, total):
+            publish_job_progress(job_id, {
+                'status': 'pending', 'stage': 'segmenting', 'frame': frame, 'total': total,
+            })
 
         segmenter = SAM2Segmenter()
         result = segmenter.generate_masks_for_video(
@@ -124,9 +160,11 @@ def generate_video_masks(self, video_key: str, video_objects_json: str, scale_fa
             start_frame=start_frame,
             end_frame=None if end_frame == -1 else end_frame,
             debug_points=False,
+            on_frame_progress=on_frame_progress,
         )
 
         self.update_state(state='PROGRESS', meta={'stage': 'finishing'})
+        publish_job_progress(job_id, {'status': 'pending', 'stage': 'finishing'})
 
         serialized_result = {}
         for frame_idx, frame_data in result.items():
@@ -144,7 +182,17 @@ def generate_video_masks(self, video_key: str, video_objects_json: str, scale_fa
         final_stage_name = stage_name or unique_filename('stages', prefix='track_masks_stage_', ext='')
         DataSaver.add_stage(final_stage_name, serialized_result)
 
-        return {"result": serialized_result, "track_id": final_stage_name}
+        publish_job_progress(job_id, {'status': 'done', 'track_id': final_stage_name})
+        send_telegram(f"✅ SAM2 job {job_id} completed successfully!")
+        # Não devolver serialized_result aqui: iria para o result backend do Celery (Redis),
+        # que não é feito para blobs grandes. Já está gravado no MinIO via DataSaver.add_stage;
+        # quem precisar dele lê de lá (ver /video/mask/status em app.py).
+        return {"track_id": final_stage_name}
+
+    except Exception as exc:
+        publish_job_progress(job_id, {'status': 'failed', 'error': str(exc)})
+        send_telegram(f"❌ SAM2 job {job_id} failed: {exc}")
+        raise
 
     finally:
         # A limpeza não deve mascarar um resultado/erro real da task

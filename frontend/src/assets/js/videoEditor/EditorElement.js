@@ -1,7 +1,9 @@
+import { generateUUID } from "/src/assets/js/utils.js"
+
 export default class EditorElement {
     constructor(type) {
         this.type = type
-        this.id = crypto.randomUUID()
+        this.id = generateUUID()
         this.stOffset = 0
         this.start = 0
         this.end = 5 // Default duration

@@ -13,7 +13,8 @@ from datetime import timedelta
 
 from flask import Flask, jsonify, send_from_directory, request, send_file
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, decode_token
+from flask_socketio import SocketIO, join_room
 import json
 import traceback
 
@@ -33,8 +34,9 @@ from data_saver import DataSaver
 from utils import *
 from text_generator import create_text_frame
 import storage
+import ws_listener
 from celery.result import AsyncResult
-from tasks import celery_app, generate_video_masks
+from tasks import celery_app, generate_video_masks, publish_job_progress
 from auth import db, auth_bp
 
 app = Flask(__name__)
@@ -53,6 +55,40 @@ app.register_blueprint(auth_bp, url_prefix='/auth')
 
 with app.app_context():
     db.create_all()
+
+# async_mode='threading' de propósito: eventlet/gevent fazem monkey-patch do stdlib
+# (socket, threading, etc.) o que entra em conflito com torch/CUDA usados no mesmo processo
+# pelo SAM2Segmenter em /video/frame/mask.
+# Sem message_queue: o ws_listener.py já distribui o progresso entre pods via Redis
+# pub/sub manualmente (cada pod só emite para clientes ligados a ele), por isso o
+# adapter Redis nativo do SocketIO seria redundante (e duplicaria as mensagens).
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+)
+
+
+@socketio.on('connect')
+def on_socket_connect(auth):
+    token = (auth or {}).get('token')
+    if not token:
+        return False
+
+    try:
+        decode_token(token)
+    except Exception:
+        return False
+
+
+@socketio.on('subscribe_job')
+def on_subscribe_job(data):
+    job_id = (data or {}).get('job_id')
+    if job_id:
+        join_room(f'job_{job_id}')
+
+
+ws_listener.start_listener(socketio)
 
 # Definição da pasta de imagens
 IMAGES_FOLDER = 'images'
@@ -314,9 +350,24 @@ def get_video_mask_status(job_id):
 
     if task.state == 'SUCCESS':
         payload = task.result
-        return jsonify({'status': 'done', 'result': payload['result'], 'track_id': payload['track_id']})
+        result = DataSaver.get_stage(payload['track_id'])
+        return jsonify({'status': 'done', 'result': result, 'track_id': payload['track_id']})
+
+    if task.state == 'REVOKED':
+        return jsonify({'status': 'cancelled'})
 
     return jsonify({'status': task.state.lower()})
+
+
+@app.route('/video/mask/<job_id>/cancel', methods=['POST'])
+@jwt_required()
+def cancel_video_mask_job(job_id):
+    # terminate=True: o worker está a correr a inferência SAM2 de forma síncrona
+    # (sem checkpoints de cancelamento), por isso só matar o processo do worker
+    # interrompe a task de facto. Pode deixar ficheiros temporários por limpar.
+    celery_app.control.revoke(job_id, terminate=True)
+    publish_job_progress(job_id, {'status': 'cancelled'})
+    return jsonify({'status': 'cancelled'}), 200
 
 @app.route('/projects', methods=['POST'])
 @jwt_required()
@@ -618,4 +669,10 @@ def download():
         print("\n=== FIM DA REQUISIÇÃO ===")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    # use_reloader=False: evita que o reloader do Werkzeug (modo debug) arranque
+    # o processo (e a thread do ws_listener) duas vezes
+    # allow_unsafe_werkzeug=True: sem eventlet/gevent (de propósito, ver comentário
+    # acima do SocketIO), o Flask-SocketIO recusa-se a correr o dev server do Werkzeug
+    # sem esta flag. Está aceitável aqui — escala pequena, processo único por pod.
+    socketio.run(app, host='0.0.0.0', port=8000, debug=app.debug, use_reloader=False,
+                 allow_unsafe_werkzeug=True)

@@ -22,6 +22,7 @@ export const useVideoEditor = defineStore('videoEditor', () => {
 
     const isLoadingInternal = ref(false); // Estado interno
     const loadingStatusText = ref('') // Texto de status mostrado durante o loading (ex.: progresso de uma task assíncrona)
+    const currentMaskJobId = ref(null) // job_id da geração de máscaras em curso (permite cancelar)
 
     // Computed com getter e setter para rastrear mudanças
     const isLoading = computed({
@@ -228,8 +229,14 @@ export const useVideoEditor = defineStore('videoEditor', () => {
         const options = {
             scale_factor: inputOptions.scale_factor || maskScaleFactor.value,
             ...inputOptions,
+            onJobStarted: (jobId) => {
+                currentMaskJobId.value = jobId
+            },
             onStatusUpdate: (statusData) => {
-                loadingStatusText.value = maskJobStageLabels[statusData.stage] || maskJobStageLabels[statusData.status] || ''
+                const label = maskJobStageLabels[statusData.stage] || maskJobStageLabels[statusData.status] || ''
+                loadingStatusText.value = (statusData.stage === 'segmenting' && statusData.total)
+                    ? `${label} (frame ${statusData.frame}/${statusData.total})`
+                    : label
             },
         };
 
@@ -289,12 +296,25 @@ export const useVideoEditor = defineStore('videoEditor', () => {
             return [data.track_id, newMasks];
         }
         catch (error) {
-            console.error('Erro ao gerar máscaras para o vídeo:', error);
-            alert(`Ocorreu um erro ao gerar as máscaras do vídeo: ${error.message || error}`);
+            if (!error.cancelled) {
+                console.error('Erro ao gerar máscaras para o vídeo:', error);
+                alert(`Ocorreu um erro ao gerar as máscaras do vídeo: ${error.message || error}`);
+            }
             return null;
         }
         finally {
             loadingStatusText.value = ''
+            currentMaskJobId.value = null
+        }
+    }
+
+    // Cancela a geração de máscaras em curso (chamado pelo botão "Cancelar" no overlay de loading)
+    async function cancelMaskGeneration() {
+        if (!currentMaskJobId.value) return
+        try {
+            await backend.cancelVideoMaskJob(currentMaskJobId.value)
+        } catch (error) {
+            console.error('Erro ao cancelar a geração de máscaras:', error)
         }
     }
 
@@ -724,7 +744,7 @@ export const useVideoEditor = defineStore('videoEditor', () => {
     }
 
     return {
-        elementManager, isLoading, loadingStatusText, videoPlayerWidth, videoPlayerHeight, videoPlayerContainer, fps,
+        elementManager, isLoading, loadingStatusText, currentMaskJobId, cancelMaskGeneration, videoPlayerWidth, videoPlayerHeight, videoPlayerContainer, fps,
         selectedElement, maskHandler, selectedTool, selectedToolIcon, mapperBoxVideo, register, effectHandler, zoomLevel,
         preventUnselectElementOnOutside, videoPlayerSpaceContainer, maskScaleFactor, isPromptElementOpen, onElementPromptedSelectCallback,
         onElementPromptSelectionDoneCallback, animationHandler, lines,

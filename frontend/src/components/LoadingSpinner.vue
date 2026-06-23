@@ -3,6 +3,7 @@
         <div class="spinner"></div>
         <p class="loading-text">Loading...</p>
         <p v-if="statusText" class="loading-status-text">{{ statusText }}</p>
+        <button v-if="onCancel" class="cancel-loading-button" @click="onCancel">Cancelar</button>
     </div>
 </template>
 
@@ -14,13 +15,22 @@
         statusText: {
             type: String,
             default: ''
+        },
+        onCancel: {
+            type: Function,
+            default: null
         }
     });
 
     const isLoading = ref(props.isLoading)
+    const onCancel = ref(props.onCancel)
 
     watch(() => props.isLoading, () => {
         isLoading.value = props.isLoading
+    })
+
+    watch(() => props.onCancel, () => {
+        onCancel.value = props.onCancel
     })
 </script>
 
@@ -61,6 +71,21 @@
         color: rgba(255, 255, 255, 0.8);
         font-size: 14px;
         text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    .cancel-loading-button {
+        margin-top: 16px;
+        padding: 8px 20px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
+        background: transparent;
+        color: white;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .cancel-loading-button:hover {
+        background: rgba(255, 255, 255, 0.15);
     }
 
     @keyframes spin {

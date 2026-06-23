@@ -1,8 +1,25 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import axios from 'axios';
+import { io } from 'socket.io-client';
+import { TOKEN_KEY } from '@/stores/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL
+
+// API_BASE_URL pode ser relativo ("/api") ou absoluto ("https://host/api"); o
+// socket.io precisa do host e do path do handshake separados (nginx encaminha
+// /api/socket.io/* para o backend, que serve socket.io na raiz "/socket.io").
+function getSocketConnectionParams() {
+    const basePath = API_BASE_URL.replace(/\/$/, '')
+    const isAbsolute = /^https?:\/\//i.test(basePath)
+
+    if (isAbsolute) {
+        const url = new URL(basePath)
+        return { host: `${url.protocol}//${url.host}`, path: `${url.pathname}/socket.io` }
+    }
+
+    return { host: window.location.origin, path: `${basePath}/socket.io` }
+}
 
 export const useBackendStore = defineStore('backend', () => {
     const images = ref([])
@@ -58,30 +75,90 @@ export const useBackendStore = defineStore('backend', () => {
         return response.data
     }
 
-    async function pollVideoMaskJob(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatusUpdate = null } = {}) {
-        const startedAt = Date.now()
+    // Espera que a task termine, usando WebSocket para progresso em tempo real
+    // (incluindo frame a frame). O polling por HTTP fica como fallback caso o WS
+    // falhe ou caia, e é sempre usado para buscar o resultado final assim que o
+    // status fica "done" (o evento WS só traz o status, não as máscaras).
+    function waitForVideoMaskJob(jobId, { fallbackIntervalMs = 10000, timeoutMs = 30 * 60 * 1000, onStatusUpdate = null } = {}) {
+        return new Promise((resolve, reject) => {
+            const startedAt = Date.now()
+            let settled = false
+            let fallbackTimer = null
+            let socket = null
 
-        while (true) {
-            const { data } = await axios.get(`${API_BASE_URL}/video/mask/status/${jobId}`)
-
-            if (onStatusUpdate) {
-                onStatusUpdate(data)
+            const cleanup = () => {
+                if (fallbackTimer) clearInterval(fallbackTimer)
+                if (socket) socket.disconnect()
             }
 
-            if (data.status === 'done') {
-                return data
+            const settle = (fn, value) => {
+                if (settled) return
+                settled = true
+                cleanup()
+                fn(value)
             }
 
-            if (data.status === 'failed') {
-                throw new Error(data.error || 'Falha ao gerar máscaras do vídeo')
+            async function fetchStatusOnce() {
+                try {
+                    const { data } = await axios.get(`${API_BASE_URL}/video/mask/status/${jobId}`)
+                    handleStatusPayload(data)
+                } catch (error) {
+                    console.warn('Falha ao consultar status do job (fallback de polling):', error)
+                }
             }
 
-            if (Date.now() - startedAt > timeoutMs) {
-                throw new Error('Tempo limite excedido a aguardar pelas máscaras')
+            function handleStatusPayload(data) {
+                if (settled) return
+
+                if (onStatusUpdate) {
+                    onStatusUpdate(data)
+                }
+
+                if (data.status === 'done') {
+                    settle(resolve, data)
+                } else if (data.status === 'failed') {
+                    settle(reject, new Error(data.error || 'Falha ao gerar máscaras do vídeo'))
+                } else if (data.status === 'cancelled') {
+                    const error = new Error('Geração de máscaras cancelada')
+                    error.cancelled = true
+                    settle(reject, error)
+                } else if (Date.now() - startedAt > timeoutMs) {
+                    settle(reject, new Error('Tempo limite excedido a aguardar pelas máscaras'))
+                }
             }
 
-            await new Promise(resolve => setTimeout(resolve, intervalMs))
-        }
+            // Fallback: garante que o job termina mesmo que o WebSocket nunca ligue/caia
+            fallbackTimer = setInterval(fetchStatusOnce, fallbackIntervalMs)
+
+            try {
+                const { host, path } = getSocketConnectionParams()
+                socket = io(host, {
+                    path,
+                    transports: ['websocket'],
+                    auth: { token: localStorage.getItem(TOKEN_KEY) },
+                })
+
+                socket.on('connect', () => socket.emit('subscribe_job', { job_id: jobId }))
+
+                socket.on('job_progress', (data) => {
+                    if (data.status === 'done') {
+                        // O evento WS só confirma o fim; o resultado completo vem do endpoint HTTP
+                        fetchStatusOnce()
+                    } else {
+                        handleStatusPayload(data)
+                    }
+                })
+
+                socket.on('connect_error', (error) => {
+                    console.warn('WebSocket indisponível, a depender do polling de fallback:', error)
+                })
+            } catch (error) {
+                console.warn('Não foi possível iniciar o WebSocket, a depender do polling de fallback:', error)
+            }
+
+            // Confirma o estado atual já agora, caso o job termine antes de ligarmos o WS
+            fetchStatusOnce()
+        })
     }
 
     async function getMasksForVideo(videoFile, videoObjectsInfo, options = {}) {
@@ -123,9 +200,13 @@ export const useBackendStore = defineStore('backend', () => {
                 return response.data;
             }
 
-            // Caso contrário, o backend devolveu um job_id -> fazer polling até terminar
-            return await pollVideoMaskJob(response.data.job_id, {
-                intervalMs: options.pollIntervalMs,
+            // Caso contrário, o backend devolveu um job_id -> esperar pelo resultado (WS + fallback de polling)
+            if (options.onJobStarted) {
+                options.onJobStarted(response.data.job_id)
+            }
+
+            return await waitForVideoMaskJob(response.data.job_id, {
+                fallbackIntervalMs: options.fallbackIntervalMs,
                 onStatusUpdate: options.onStatusUpdate,
             });
         } catch (error) {
@@ -133,7 +214,11 @@ export const useBackendStore = defineStore('backend', () => {
             throw error;
         }
     }
-    
+
+    async function cancelVideoMaskJob(jobId) {
+        await axios.post(`${API_BASE_URL}/video/mask/${jobId}/cancel`)
+    }
+
     async function download(video_files, metadata) {
         try {
             const formData = new FormData();
@@ -156,7 +241,7 @@ export const useBackendStore = defineStore('backend', () => {
         }
     }
 
-    return { test, images, error, getMediaBasicData, getMasksForFrame, 
-        getMasksForVideo, download, convertImageToVideo }
+    return { test, images, error, getMediaBasicData, getMasksForFrame,
+        getMasksForVideo, cancelVideoMaskJob, download, convertImageToVideo }
 })
 

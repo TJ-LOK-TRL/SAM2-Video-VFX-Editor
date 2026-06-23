@@ -83,7 +83,8 @@ class SAM2Segmenter:
         frame_pattern: str = "{:05d}.jpeg",
         overwrite: bool = False,
         debug_points: bool = False,
-    ) -> Tuple[Dict, Path]:        
+        on_frame_progress: Optional[Callable[[int, int], None]] = None,
+    ) -> Tuple[Dict, Path]:
         """
         Generates segmentation masks for a given video using point-based annotations.
 
@@ -151,12 +152,18 @@ class SAM2Segmenter:
             print(f"Pontos adicionados no frame {vod.ann_frame_idx} com obj_id {vod.ann_obj_id}.")
         
         # Propagate the segmentation masks throughout the video frames
+        total_frames = len(frame_paths)
         video_segments = {}
-        for out_frame_idx, out_obj_ids, out_mask_logits in self.video_model.propagate_in_video(self.inference_state):
+        for processed_count, (out_frame_idx, out_obj_ids, out_mask_logits) in enumerate(
+            self.video_model.propagate_in_video(self.inference_state), start=1
+        ):
             video_segments[out_frame_idx] = {
                 out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
                 for i, out_obj_id in enumerate(out_obj_ids)
             }
+
+            if on_frame_progress:
+                on_frame_progress(processed_count, total_frames)
 
         return video_segments
     

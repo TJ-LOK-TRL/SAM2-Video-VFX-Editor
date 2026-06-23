@@ -36,7 +36,7 @@
     import ResizableBox from '@/components/ResizableBox.vue';
     import { useVideoEditor } from '@/stores/videoEditor';
     import { useTimelineStore } from '@/stores/timeline'
-    import { hexToRgb, getRectWithZoom } from '@/assets/js/utils.js';
+    import { hexToRgb, getRectWithZoom, generateUUID } from '@/assets/js/utils.js';
 
     const videoEditor = useVideoEditor()
     const timelineStore = useTimelineStore()
@@ -220,7 +220,7 @@
             const realY = ((event.clientY - rect.top) / rect.height) * video.value.height;
             const width = rect.width / zoom;
             const height = rect.height / zoom;
-            const id = crypto.randomUUID();
+            const id = generateUUID();
             console.log('X:', x)
             console.log('Y:', y)
             console.log('Width:', rect.width)
